@@ -1,0 +1,2 @@
+# Binf
+Probabilistic programming project 
