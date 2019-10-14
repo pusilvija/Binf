@@ -1,3 +1,88 @@
+import pyro
+import torch
+import pyro.distributions as dist
+from pyro.infer.mcmc import MCMC, NUTS
+from Bio.PDB import *
+from sklearn.metrics import mean_squared_error
+import math
+import matplotlib.pyplot as plt
+import time
+import random
+
+def save_M(M, f_out):
+    """
+    Save CA trace of M in PDB file f_out.
+    """
+    _ATOM = '%s%5i  %-4s%3s %c%4i%c   %8.3f%8.3f%8.3f%6.2f%6.2f %4s%2s%2s\n'
+
+    def get_ATOM_line(atom_i, name, resid, x, y, z, aa_type):
+        """
+        Write PDB ATOM line.
+        """
+        args=('ATOM  ', atom_i, name, aa_type, 'A', resid, ' ', x, y, z, 0.0, 0.0, 'X', ' ', ' ')
+        s = _ATOM % args
+        return s
+
+    fp = open(f_out, 'w')
+    for i in range(0, M.shape[0]):
+        x, y, z = M[i]
+        s = get_ATOM_line(i, 'CA', i, x, y, z, 'ALA') 
+        fp.write(s)
+    fp.close()
+
+def get_samples(posterior, name):
+    """
+    Extracts samples from a posterior object.
+    """
+    marginal = posterior.marginal(sites=[name])
+    marginal_tensor = marginal.support()[name]
+    return marginal_tensor
+
+def get_CA_coords(protein_name, n):
+    """
+    Gets coordinates of nth CA atom. 
+    """
+    # Get protein structure
+    parser = PDBParser()
+    struct = parser.get_structure(protein_name, protein_name + '.pdb')
+
+    # Get the coordinates of CA atoms
+    coords = []
+    for model in struct:
+        for chain in model:
+            for residue in chain:
+                for atom in residue:
+                    if atom.get_name() == 'CA':
+                        XYZ = atom.get_coord()
+                        coords.append(XYZ)
+    # Get the nth atom coordinates
+    nth_coord = coords[n]
+    return nth_coord
+
+
+def sample_distance(coords):
+    """
+    A function that samples a random distance between two points from the given coordinates.
+    Returns: a distance in a tensor; points between which the distance was calculated.
+    """
+    random2 = random.sample([x for x in range(20)], k=2)
+
+    random_dist = torch.dist(native_coords_t[random2[0]],
+                             native_coords_t[random2[1]])
+    return random_dist, random2
+
+
+# Creating a list of first native protein 20 amino acids CA atoms coordinates
+native_coords = [] 
+for i in range(20):
+    native_coords.append(get_CA_coords('2dmu', i))
+native_coords_t = torch.tensor(native_coords)
+
+
+# Find first 3 coordinates of native_coords_t
+M_first = torch.zeros([3,3])
+for i in range(3):
+    M_first[i] = native_coords_t[i]
 def rmsd_dist_burn(distances, burn, sample_nr=10, target_accept_prob=0.4):
     """
     The function runs NUTS sampler based on the specific model for sampling protein 
